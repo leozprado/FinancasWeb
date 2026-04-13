@@ -1,0 +1,40 @@
+.table-component {
+  width: 100%;
+}
+
+.table-search {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.pagination {
+  flex-wrap: wrap;
+}
+
+/* Headers ordenáveis */
+.sortable-header {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.sortable-header:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.sort-indicator {
+  font-size: 0.8em;
+  display: inline-flex;
+  align-items: center;
+  min-width: 16px;
+}
+
+/* Responsividade para paginação em telas pequenas */
+@media (max-width: 576px) {
+  .pagination {
+    font-size: 0.875rem;
+  }
+  
+  .pagination .page-link {
+    padding: 0.375rem 0.625rem;
+  }
+}

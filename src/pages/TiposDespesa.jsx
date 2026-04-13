@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Container, Card, Table, Button, Modal, Form, Badge } from 'react-bootstrap'
-import { apiRequest } from '../utils/api'
+import { Container, Card, Button, Modal, Form, Badge } from 'react-bootstrap'
+import api from '../utils/api'
+import Table from '../components/Table/Table'
 
 export default function TiposDespesa() {
   const [tiposDespesa, setTiposDespesa] = useState([])
@@ -10,11 +11,10 @@ export default function TiposDespesa() {
   const [editItem,   setEditItem]   = useState(null)
   const [deleteId,   setDeleteId]   = useState(null)
   const [nome,       setNome]       = useState('')
-  const [busca,      setBusca]      = useState('')
 
   const fetchTipos = async () => {
     try {
-      const data = await apiRequest('/TipoDespesa/com-quantidade')
+      const data = await api.get('/TipoDespesa/com-quantidade')
       setTiposDespesa(data || [])
     } catch (error) {
       console.error('Erro ao carregar tipos de despesa:', error)
@@ -43,16 +43,10 @@ export default function TiposDespesa() {
     try {
       if (editItem) {
         // Edição
-        await apiRequest(`/TipoDespesa/${editItem.id}`, {
-          method: 'PUT',
-          body: { nome: nome.trim() }
-        })
+        await api.put(`/TipoDespesa/${editItem.id}`, { nome: nome.trim() })
       } else {
         // Cadastro
-        await apiRequest('/TipoDespesa', {
-          method: 'POST',
-          body: { nome: nome.trim() }
-        })
+        await api.post('/TipoDespesa', { nome: nome.trim() })
       }
       // Recarrega a lista com as quantidades atualizadas
       await fetchTipos()
@@ -73,9 +67,7 @@ export default function TiposDespesa() {
   const handleDeleteConfirm = async () => {
     if (!deleteId) return
     try {
-      await apiRequest(`/TipoDespesa/${deleteId}`, {
-        method: 'DELETE'
-      })
+      await api.delete(`/TipoDespesa/${deleteId}`)
       setTiposDespesa(prev => prev.filter(t => t.id !== deleteId))
       setShowDelete(false)
       setDeleteId(null)
@@ -92,9 +84,53 @@ export default function TiposDespesa() {
     return tipo?.quantidadeDespesas ?? 0
   }
 
-  const tiposFiltrados = tiposDespesa.filter(t =>
-    t.nome.toLowerCase().includes(busca.toLowerCase())
-  )
+  const columns = [
+    {
+      key: '#',
+      label: '#',
+      width: 50,
+      render: (row, idx) => <span className="text-muted">{idx + 1}</span>
+    },
+    {
+      key: 'nome',
+      label: 'Nome do Tipo',
+      render: (row) => (
+        <>
+          <i className="bi bi-tag-fill me-2 text-secondary"></i>
+          <span className="fw-semibold">{row.nome}</span>
+        </>
+      )
+    },
+    {
+      key: 'quantidade',
+      label: 'Qtd. de Lançamentos',
+      align: 'center',
+      render: (row) => {
+        const count = getUsoCount(row.id)
+        return (
+          <Badge bg={count > 0 ? 'warning' : 'secondary'} text={count > 0 ? 'dark' : 'white'}>
+            {count} compra(s)
+          </Badge>
+        )
+      }
+    },
+    {
+      key: 'acoes',
+      label: 'Ações',
+      width: 120,
+      align: 'center',
+      render: (row) => (
+        <>
+          <Button variant="outline-warning" size="sm" className="me-1" onClick={() => handleOpenEdit(row)}>
+            <i className="bi bi-pencil"></i>
+          </Button>
+          <Button variant="outline-danger" size="sm" onClick={() => handleDeleteClick(row.id)}>
+            <i className="bi bi-trash"></i>
+          </Button>
+        </>
+      )
+    }
+  ]
 
   return (
     <Container fluid>
@@ -108,59 +144,16 @@ export default function TiposDespesa() {
       </div>
 
       <Card className="shadow-sm">
-        <Card.Header className="bg-white">
-          <Form.Control
-            placeholder="Buscar por nome..."
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
-            style={{ maxWidth: 320 }}
-          />
-        </Card.Header>
         <Card.Body className="p-0">
-          <Table responsive hover className="mb-0">
-            <thead className="table-dark">
-              <tr>
-                <th style={{ width: 50 }}>#</th>
-                <th>Nome do Tipo</th>
-                <th className="text-center">Qtd. de Lançamentos</th>
-                <th style={{ width: 120 }} className="text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tiposFiltrados.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="text-center text-muted py-4">
-                    {busca ? 'Nenhum tipo encontrado.' : 'Nenhum tipo cadastrado.'}
-                  </td>
-                </tr>
-              ) : (
-                tiposFiltrados.map((t, idx) => {
-                  const count = getUsoCount(t.id)
-                  return (
-                    <tr key={t.id}>
-                      <td className="text-muted">{idx + 1}</td>
-                      <td className="fw-semibold">
-                        <i className="bi bi-tag-fill me-2 text-secondary"></i>{t.nome}
-                      </td>
-                      <td className="text-center">
-                        <Badge bg={count > 0 ? 'warning' : 'secondary'} text={count > 0 ? 'dark' : 'white'}>
-                          {count} compra(s)
-                        </Badge>
-                      </td>
-                      <td className="text-center">
-                        <Button variant="outline-warning" size="sm" className="me-1" onClick={() => handleOpenEdit(t)}>
-                          <i className="bi bi-pencil"></i>
-                        </Button>
-                        <Button variant="outline-danger" size="sm" onClick={() => handleDeleteClick(t.id)}>
-                          <i className="bi bi-trash"></i>
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </Table>
+          <Table
+            columns={columns}
+            data={tiposDespesa}
+            showSearch={true}
+            searchFilter={(item, term) => item.nome.toLowerCase().includes(term)}
+            emptyMessage="Nenhum tipo cadastrado."
+            noResultsMessage="Nenhum tipo encontrado."
+            itemsPerPage={15}
+          />
         </Card.Body>
         <Card.Footer className="text-muted small">
           {tiposDespesa.length} tipo(s) cadastrado(s)

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Container, Card, Table, Button, Modal, Form, Badge } from 'react-bootstrap'
+import { Container, Card, Button, Modal, Form } from 'react-bootstrap'
+import Table from '../components/Table/Table'
+import api from '../utils/api'
 
 export default function Pessoas() {
   const [pessoas, setPessoas] = useState([])
@@ -8,13 +10,11 @@ export default function Pessoas() {
   const [editItem,    setEditItem]    = useState(null)
   const [deleteId,    setDeleteId]    = useState(null)
   const [nome,        setNome]        = useState('')
-  const [busca,       setBusca]       = useState('')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     setLoading(true)
-    fetch('http://localhost:5107/api/Pessoa')
-      .then(res => res.json())
+    api.get('/Pessoa')
       .then(data => setPessoas(data))
       .catch(() => setPessoas([]))
       .finally(() => setLoading(false))
@@ -37,12 +37,7 @@ export default function Pessoas() {
     setLoading(true)
     if (editItem) {
       // Edição
-      fetch(`http://localhost:5107/api/Pessoa/${editItem.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: nome.trim() })
-      })
-        .then(res => res.json())
+      api.put(`/Pessoa/${editItem.id}`, { nome: nome.trim() })
         .then(pessoaAtualizada => {
           setPessoas(prev =>
             prev.map(p => p.id === pessoaAtualizada.id ? pessoaAtualizada : p)
@@ -51,19 +46,22 @@ export default function Pessoas() {
           setNome('')
           setEditItem(null)
         })
+        .catch(error => {
+          console.error('Erro ao editar pessoa:', error)
+          alert('Erro ao salvar. Tente novamente.')
+        })
         .finally(() => setLoading(false))
     } else {
       // Cadastro
-      fetch('http://localhost:5107/api/Pessoa', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: nome.trim() })
-      })
-        .then(res => res.json())
+      api.post('/Pessoa', { nome: nome.trim() })
         .then(novaPessoa => {
           setPessoas(prev => [...prev, novaPessoa])
           setShowModal(false)
           setNome('')
+        })
+        .catch(error => {
+          console.error('Erro ao cadastrar pessoa:', error)
+          alert('Erro ao salvar. Tente novamente.')
         })
         .finally(() => setLoading(false))
     }
@@ -77,27 +75,52 @@ export default function Pessoas() {
   const handleDeleteConfirm = () => {
     if (!deleteId) return
     setLoading(true)
-    fetch(`http://localhost:5107/api/Pessoa/${deleteId}`, {
-      method: 'DELETE'
-    })
-      .then(res => {
-        if (res.ok) {
-          setPessoas(prev => prev.filter(p => p.id !== deleteId))
-        }
+    api.delete(`/Pessoa/${deleteId}`)
+      .then(() => {
+        setPessoas(prev => prev.filter(p => p.id !== deleteId))
+        setShowDelete(false)
+        setDeleteId(null)
+      })
+      .catch(error => {
+        console.error('Erro ao excluir pessoa:', error)
+        alert('Erro ao excluir. Verifique se não há registros vinculados.')
         setShowDelete(false)
         setDeleteId(null)
       })
       .finally(() => setLoading(false))
   }
 
-  // const getUsage = (id) => ({
-  //   receitas:  salarios.filter(s => s.pessoaId === id).length,
-  //   despesas:  despesas.filter(d => d.pessoaId === id).length,
-  // })
-
-  const pessoasFiltradas = pessoas.filter(p =>
-    p.nome.toLowerCase().includes(busca.toLowerCase())
-  )
+  const columns = [
+    {
+      key: '#',
+      label: '#',
+      width: 50,
+      render: (row, idx) => <span className="text-muted">{idx + 1}</span>
+    },
+    {
+      key: 'nome',
+      label: 'Nome',
+      sortable: true,
+      sortType: 'string',
+      render: (row) => <span className="fw-semibold">{row.nome}</span>
+    },
+    {
+      key: 'acoes',
+      label: 'Ações',
+      width: 120,
+      align: 'center',
+      render: (row) => (
+        <>
+          <Button variant="outline-warning" size="sm" className="me-1" onClick={() => handleOpenEdit(row)}>
+            <i className="bi bi-pencil"></i>
+          </Button>
+          <Button variant="outline-danger" size="sm" onClick={() => handleDeleteClick(row.id)}>
+            <i className="bi bi-trash"></i>
+          </Button>
+        </>
+      )
+    }
+  ]
 
   return (
     <Container fluid>
@@ -111,54 +134,20 @@ export default function Pessoas() {
       </div>
 
       <Card className="shadow-sm">
-        <Card.Header className="bg-white">
-          <Form.Control
-            placeholder="Buscar por nome..."
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
-            style={{ maxWidth: 320 }}
-          />
-        </Card.Header>
         <Card.Body className="p-0">
-          <Table responsive hover className="mb-0">
-            <thead className="table-dark">
-              <tr>
-                <th style={{ width: 50 }}>#</th>
-                <th>Nome</th>
-                <th style={{ width: 120 }} className="text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={3} className="text-center text-muted py-4">
-                    Carregando...
-                  </td>
-                </tr>
-              ) : pessoasFiltradas.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="text-center text-muted py-4">
-                    {busca ? 'Nenhuma pessoa encontrada.' : 'Nenhuma pessoa cadastrada.'}
-                  </td>
-                </tr>
-              ) : (
-                pessoasFiltradas.map((p, idx) => (
-                  <tr key={p.id}>
-                    <td className="text-muted">{idx + 1}</td>
-                    <td className="fw-semibold">{p.nome}</td>
-                    <td className="text-center">
-                      <Button variant="outline-warning" size="sm" className="me-1" onClick={() => handleOpenEdit(p)}>
-                        <i className="bi bi-pencil"></i>
-                      </Button>
-                      <Button variant="outline-danger" size="sm" onClick={() => handleDeleteClick(p.id)}>
-                        <i className="bi bi-trash"></i>
-                      </Button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </Table>
+          {loading ? (
+            <div className="text-center text-muted py-4">Carregando...</div>
+          ) : (
+            <Table
+              columns={columns}
+              data={pessoas}
+              showSearch={true}
+              searchFilter={(item, term) => item.nome.toLowerCase().includes(term)}
+              emptyMessage="Nenhuma pessoa cadastrada."
+              noResultsMessage="Nenhuma pessoa encontrada."
+              itemsPerPage={15}
+            />
+          )}
         </Card.Body>
         <Card.Footer className="text-muted small">
           {pessoas.length} pessoa(s) cadastrada(s)

@@ -1,5 +1,5 @@
 // API Configuration
-export const API_BASE_URL = 'http://localhost:5107/api'
+export const API_BASE_URL = 'http://leozprado-001-site1.anytempurl.com/api/'
 
 export const MESES = [
   { value: 1, label: 'Janeiro' },

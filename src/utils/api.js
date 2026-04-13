@@ -1,88 +1,98 @@
+import axios from 'axios'
 import { API_BASE_URL } from './constants'
 
-/**
- * Helper para fazer requisições autenticadas à API
- * @param {string} endpoint - O endpoint da API (ex: '/Pessoa/listar')
- * @param {object} options - Opções da requisição (method, body, etc)
- * @returns {Promise} - Resposta da API
- */
-export async function apiRequest(endpoint, options = {}) {
-  const authData = localStorage.getItem('financas_auth')
-  let token = null
-  
-  if (authData) {
-    try {
-      const auth = JSON.parse(authData)
-      token = auth.token
-    } catch (error) {
-      console.error('Erro ao recuperar token:', error)
-    }
-  }
-
-  const headers = {
+// Criar instância do axios com configurações padrão
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 15000, // 15 segundos
+  headers: {
     'Content-Type': 'application/json',
-    ...options.headers,
+  },
+})
+
+// Interceptor para adicionar token em todas as requisições
+api.interceptors.request.use(
+  (config) => {
+    const authData = localStorage.getItem('financas_auth')
+    
+    if (authData) {
+      try {
+        const auth = JSON.parse(authData)
+        if (auth.token) {
+          config.headers.Authorization = `Bearer ${auth.token}`
+        }
+      } catch (error) {
+        console.error('Erro ao recuperar token:', error)
+      }
+    }
+    
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
   }
+)
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
-  const config = {
-    ...options,
-    headers,
-  }
-
-  if (options.body && typeof options.body === 'object') {
-    config.body = JSON.stringify(options.body)
-  }
-
-  try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config)
-
-    // Se a resposta for 401 (não autorizado), o token pode ter expirado
-    if (response.status === 401) {
+// Interceptor para tratar respostas e erros
+api.interceptors.response.use(
+  (response) => {
+    // Retorna apenas os dados da resposta
+    return response.data
+  },
+  (error) => {
+    // Tratamento de erro 401 (não autorizado)
+    if (error.response && error.response.status === 401) {
       localStorage.removeItem('financas_auth')
       window.location.href = '/login'
-      throw new Error('Sessão expirada. Faça login novamente.')
+      return Promise.reject(new Error('Sessão expirada. Faça login novamente.'))
     }
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || `Erro na requisição: ${response.status}`)
+    // Tratamento de erro de rede
+    if (!error.response) {
+      console.error('Erro de rede:', error)
+      return Promise.reject(new Error('Erro de conexão. Verifique sua internet.'))
     }
 
-    // Verifica se há conteúdo na resposta
-    const contentType = response.headers.get('content-type')
-    if (contentType && contentType.includes('application/json')) {
-      return await response.json()
-    }
-
-    return null
-  } catch (error) {
-    console.error('Erro na requisição:', error)
-    throw error
+    // Outros erros
+    const errorMessage = error.response.data?.message || 
+                         error.response.data?.error || 
+                         `Erro na requisição: ${error.response.status}`
+    
+    console.error('Erro na API:', errorMessage)
+    return Promise.reject(new Error(errorMessage))
   }
-}
+)
+
+// Exportar a instância configurada
+export default api
 
 /**
  * Exemplos de uso:
  * 
  * // GET
- * const pessoas = await apiRequest('/Pessoa/listar')
+ * const pessoas = await api.get('/Pessoa')
+ * 
+ * // GET com parâmetros
+ * const pessoa = await api.get(`/Pessoa/${id}`)
  * 
  * // POST
- * const novaPessoa = await apiRequest('/Pessoa/criar', {
- *   method: 'POST',
- *   body: { nome: 'João Silva', cpf: '123.456.789-00' }
+ * const novaPessoa = await api.post('/Pessoa', {
+ *   nome: 'João Silva',
+ *   cpf: '123.456.789-00'
  * })
  * 
  * // PUT
- * const atualizada = await apiRequest('/Pessoa/atualizar', {
- *   method: 'PUT',
- *   body: { id: 1, nome: 'João Silva' }
+ * const atualizada = await api.put(`/Pessoa/${id}`, {
+ *   nome: 'João Silva Atualizado'
  * })
  * 
  * // DELETE
- * await apiRequest('/Pessoa/deletar/1', { method: 'DELETE' })
+ * await api.delete(`/Pessoa/${id}`)
+ * 
+ * // Tratamento de erros
+ * try {
+ *   const data = await api.get('/endpoint')
+ * } catch (error) {
+ *   console.error(error.message)
+ * }
  */

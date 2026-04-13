@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Container, Card, Table, Button, Modal, Form, Row, Col } from 'react-bootstrap'
+import { Container, Card, Button, Modal, Form, Row, Col } from 'react-bootstrap'
 import { MESES, ANOS, getMesLabel, formatCurrency } from '../utils/constants'
-
-const API_BASE = 'http://localhost:5107/api'
+import Table from '../components/Table/Table'
+import api from '../utils/api'
 
 const defaultForm = () => ({
   pessoaId: '',
@@ -16,8 +16,7 @@ export default function Salarios() {
   const [salarios, setSalarios] = useState([])
 
   const fetchSalarios = () => {
-    fetch(`${API_BASE}/Receita/consultar`)
-      .then(res => res.json())
+    api.get('/Receita/consultar')
       .then(data => setSalarios(data))
       .catch(() => setSalarios([]))
   }
@@ -25,14 +24,13 @@ export default function Salarios() {
   useEffect(() => {
     fetchSalarios()
 
-    fetch(`${API_BASE}/Pessoa`)
-      .then(res => res.json())
+    api.get('/Pessoa')
       .then(data => setPessoas(data))
       .catch(() => setPessoas([]))
   }, [])
 
   const [filtroPessoa, setFiltroPessoa] = useState('')
-  const [filtroMes,    setFiltroMes]    = useState('')
+  const [filtroMes,    setFiltroMes]    = useState(String(new Date().getMonth() + 1))
   const [filtroAno,    setFiltroAno]    = useState(String(new Date().getFullYear()))
 
   const [showModal,   setShowModal]   = useState(false)
@@ -85,13 +83,7 @@ export default function Salarios() {
       setSaving(true)
       setSaveError('')
       try {
-        const res = await fetch(`${API_BASE}/Receita/alterar/${editItem.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        })
-        if (!res.ok) throw new Error(`Erro ${res.status}`)
-        const result = await res.json()
+        const result = await api.put(`/Receita/alterar/${editItem.id}`, data)
         setSalarios(prev => prev.map(s => s.id === editItem.id ? result : s))
         setShowModal(false)
         fetchSalarios()
@@ -106,13 +98,7 @@ export default function Salarios() {
     setSaving(true)
     setSaveError('')
     try {
-      const res = await fetch(`${API_BASE}/Receita/criar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error(`Erro ${res.status}`)
-      const result = await res.json()
+      const result = await api.post('/Receita/criar', data)
       setSalarios(prev => [...prev, result])
       setShowModal(false)
       fetchSalarios()
@@ -130,11 +116,10 @@ export default function Salarios() {
 
   const handleDeleteConfirm = async () => {
     try {
-      const res = await fetch(`${API_BASE}/Receita/excluir/${deleteId}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error(`Erro ${res.status}`)
+      await api.delete(`/Receita/excluir/${deleteId}`)
       setSalarios(prev => prev.filter(s => s.id !== deleteId))
     } catch (err) {
-      // silently keep the item in list if deletion fails
+      console.error('Erro ao excluir receita:', err)
     } finally {
       setShowDelete(false)
       setDeleteId(null)
@@ -142,6 +127,45 @@ export default function Salarios() {
   }
 
   const set = (field) => (e) => setFormData(f => ({ ...f, [field]: e.target.value }))
+
+  const columns = [
+    {
+      key: 'pessoa',
+      label: 'Pessoa',
+      render: (row) => <span className="fw-semibold">{getPessoaNome(row)}</span>
+    },
+    {
+      key: 'mes',
+      label: 'Mês',
+      render: (row) => getMesLabel(row.mes)
+    },
+    {
+      key: 'ano',
+      label: 'Ano'
+    },
+    {
+      key: 'valor',
+      label: 'Valor',
+      align: 'end',
+      render: (row) => <span className="text-success fw-bold">{formatCurrency(row.valor)}</span>
+    },
+    {
+      key: 'acoes',
+      label: 'Ações',
+      width: 100,
+      align: 'center',
+      render: (row) => (
+        <>
+          <Button variant="outline-warning" size="sm" className="me-1" onClick={() => handleOpenEdit(row)}>
+            <i className="bi bi-pencil"></i>
+          </Button>
+          <Button variant="outline-danger" size="sm" onClick={() => handleDeleteClick(row.id)}>
+            <i className="bi bi-trash"></i>
+          </Button>
+        </>
+      )
+    }
+  ]
 
   return (
     <Container fluid>
@@ -194,43 +218,12 @@ export default function Salarios() {
       {/* Tabela */}
       <Card className="shadow-sm">
         <Card.Body className="p-0">
-          <Table responsive hover className="mb-0">
-            <thead className="table-dark">
-              <tr>
-                <th>Pessoa</th>
-                <th>Mês</th>
-                <th>Ano</th>
-                <th className="text-end">Valor</th>
-                <th style={{ width: 100 }} className="text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSalarios.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="text-center text-muted py-4">
-                    Nenhum lançamento encontrado para os filtros selecionados.
-                  </td>
-                </tr>
-              ) : (
-                filteredSalarios.map(s => (
-                  <tr key={s.id}>
-                    <td className="fw-semibold">{getPessoaNome(s)}</td>
-                    <td>{getMesLabel(s.mes)}</td>
-                    <td>{s.ano}</td>
-                    <td className="text-success fw-bold text-end">{formatCurrency(s.valor)}</td>
-                    <td className="text-center">
-                      <Button variant="outline-warning" size="sm" className="me-1" onClick={() => handleOpenEdit(s)}>
-                        <i className="bi bi-pencil"></i>
-                      </Button>
-                      <Button variant="outline-danger" size="sm" onClick={() => handleDeleteClick(s.id)}>
-                        <i className="bi bi-trash"></i>
-                      </Button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </Table>
+          <Table
+            columns={columns}
+            data={filteredSalarios}
+            emptyMessage="Nenhum lançamento encontrado para os filtros selecionados."
+            itemsPerPage={15}
+          />
         </Card.Body>
       </Card>
 

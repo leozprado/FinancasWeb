@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { API_BASE_URL } from '../utils/constants'
+import api from '../utils/api'
 
 const AuthContext = createContext()
 
@@ -41,20 +41,7 @@ export function AuthProvider({ children }) {
   // Faz login via API
   const login = async (email, senha) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/Usuario/autenticar`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, senha }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || 'Erro ao fazer login')
-      }
-
-      const authData = await response.json()
+      const authData = await api.post('/Usuario/autenticar', { email, senha })
       
       // Armazena os dados do usuário e token
       setUser(authData)

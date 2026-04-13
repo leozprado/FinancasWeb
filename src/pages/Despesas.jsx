@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Container, Card, Table, Button, Modal, Form, Row, Col, Badge, Alert } from 'react-bootstrap'
+import { Container, Card, Button, Modal, Form, Row, Col, Badge, Alert } from 'react-bootstrap'
+import TableComponent from '../components/Table/Table'
 import { useData } from '../context/DataContext'
 import { MESES, ANOS, getMesLabel, formatCurrency } from '../utils/constants'
+import api from '../utils/api'
 
 const defaultForm = () => ({
   pessoaId:     '',
@@ -56,8 +58,7 @@ export default function Despesas() {
   const [tiposDespesaApi, setTiposDespesaApi] = useState([])
 
   const fetchDespesas = () => {
-    fetch('http://localhost:5107/api/Despesas')
-      .then(res => res.json())
+    api.get('/Despesas')
       .then(data => setDespesas(data))
       .catch(() => setDespesas([]))
   }
@@ -65,24 +66,23 @@ export default function Despesas() {
   useEffect(() => {
     fetchDespesas()
 
-    fetch('http://localhost:5107/api/Pessoa')
-      .then(res => res.json())
+    api.get('/Pessoa')
       .then(data => setPessoasApi(data))
       .catch(() => setPessoasApi([]))
 
-    fetch('http://localhost:5107/api/TipoDespesa')
-      .then(res => res.json())
+    api.get('/TipoDespesa')
       .then(data => setTiposDespesaApi(data))
       .catch(() => setTiposDespesaApi([]))
   }, [])
 
   const [filtroPessoa, setFiltroPessoa] = useState('')
   const [filtroTipo,   setFiltroTipo]   = useState('')
-  const [filtroMes,    setFiltroMes]    = useState('')
+  const [filtroMes,    setFiltroMes]    = useState(MESES[new Date().getMonth()].label)
   const [filtroAno,    setFiltroAno]    = useState(String(new Date().getFullYear()))
 
   const [showModal,     setShowModal]     = useState(false)
   const [showDelete,    setShowDelete]    = useState(false)
+  const [editItem,      setEditItem]      = useState(null)
   const [deleteId,      setDeleteId]      = useState(null)
   const [deletarTodas,  setDeletarTodas]  = useState(false)
   const [formData,      setFormData]      = useState(defaultForm())
@@ -91,15 +91,6 @@ export default function Despesas() {
   // ── Valores únicos para filtros ────────────────────────────────
   const pessoasUnicas = useMemo(() => [...new Set(despesas.map(d => d.nomePessoa))].sort(), [despesas])
   const tiposUnicos   = useMemo(() => [...new Set(despesas.map(d => d.nomeTipoDespesa))].sort(), [despesas])
-  const mesesUnicos   = useMemo(() => { 
-    const s = new Set(); 
-    despesas.forEach(d => getTodasParcelas(d).forEach(p => s.add(p.mesLabel))); 
-    return [...s].sort((a, b) => {
-      const indexA = MESES.findIndex(m => m.label === a)
-      const indexB = MESES.findIndex(m => m.label === b)
-      return indexA - indexB
-    })
-  }, [despesas])
   const anosUnicos    = useMemo(() => { const s = new Set(); despesas.forEach(d => getTodasParcelas(d).forEach(p => s.add(p.ano)));    return [...s].sort() }, [despesas])
 
   // ── Filtrar ────────────────────────────────────────────────────
@@ -124,13 +115,15 @@ export default function Despesas() {
     [despesas, filtroPessoa, filtroTipo, filtroMes, filtroAno]
   )
 
-  const totalFiltrado = filteredDespesas.reduce((s, d) => s + d.valorTotal, 0)
+  const totalFiltrado = filteredDespesas.reduce((s, d) => s + (d.parcelas?.[0]?.valor ?? 0), 0)
 
-  // Referência de data para cálculo de parcelas pagas: usa o filtro quando ambos estão ativos
+  // Referência de data para cálculo de parcelas pagas: usa o filtro quando disponível
   const refMesAnoFiltro = useMemo(() => {
-    if (filtroMes && filtroAno) {
-      const mesIdx = MESES.findIndex(m => m.label === filtroMes)
-      return Number(filtroAno) * 12 + (mesIdx + 1)
+    if (filtroMes || filtroAno) {
+      const mesIdx = filtroMes ? MESES.findIndex(m => m.label === filtroMes) : 11
+      const mes = filtroMes ? mesIdx + 1 : 12
+      const ano = filtroAno ? Number(filtroAno) : new Date().getFullYear()
+      return ano * 12 + mes
     }
     return NOW_MES_ANO
   }, [filtroMes, filtroAno])
@@ -146,8 +139,43 @@ export default function Despesas() {
   // ── Form helpers ───────────────────────────────────────────────
   const set = (field) => (e) => setFormData(f => ({ ...f, [field]: e.target.value }))
 
+  const handleValorChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, '')
+    const numeric = (parseInt(digits || '0', 10) / 100).toFixed(2)
+    setFormData(f => ({ ...f, valor: numeric === '0.00' ? '' : numeric }))
+  }
+
+  const formatValorDisplay = (val) => {
+    if (!val) return ''
+    const num = parseFloat(val)
+    if (isNaN(num)) return ''
+    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  }
+
   const handleOpenAdd = () => {
+    setEditItem(null)
     setFormData(defaultForm())
+    setShowModal(true)
+  }
+
+  const mesesNomes = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ]
+
+  const handleOpenEdit = (d) => {
+    const mesNum = mesesNomes.indexOf(d.mesPrimeiraParcela) + 1
+    setEditItem(d)
+    setFormData({
+      pessoaId:      d.pessoaId      ?? '',
+      tipoDespesaId: d.tipoDespesaId ?? '',
+      loja:          d.loja,
+      valor:         String(d.valorTotal),
+      parcelas:      d.parcelas?.length ?? 1,
+      mes:           mesNum || new Date().getMonth() + 1,
+      ano:           d.anoPrimeiraParcela,
+      observacao:    d.observacao || '',
+    })
     setShowModal(true)
   }
 
@@ -165,11 +193,6 @@ export default function Despesas() {
 
     if (!pessoaId || !tipoDespesaId || !loja.trim() || !valor || Number(valor) <= 0) return;
 
-    // Converte número do mês para nome do mês
-    const mesesNomes = [
-      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ];
     const mesPrimeiraParcela = mesesNomes[Number(mes) - 1];
 
     const payload = {
@@ -178,30 +201,26 @@ export default function Despesas() {
       quantidadeParcelas: Number(parcelas),
       mesPrimeiraParcela,
       anoPrimeiraParcela: Number(ano),
-      observacao: observacao || "",
+      observacao: observacao || '',
       pessoaId,
       tipoDespesaId
     };
 
-    fetch('http://localhost:5107/api/Despesas/cadastrar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-      .then(res => {
-        if (!res.ok) {
-          throw new Error('Erro ao cadastrar despesa')
-        }
-        return res.json()
-      })
+    const request = editItem
+      ? api.put(`/Despesas/atualizar/${editItem.id}`, payload)
+      : api.post('/Despesas/cadastrar', payload);
+
+    request
       .then(() => {
         setShowModal(false);
-        limparFiltros();
+        setEditItem(null);
         fetchDespesas();
         setAlertMsg({
           show: true,
           type: 'success',
-          message: `Despesa cadastrada com sucesso! ${Number(parcelas) > 1 ? `${parcelas} parcelas lançadas.` : ''}`
+          message: editItem
+            ? 'Despesa atualizada com sucesso!'
+            : `Despesa cadastrada com sucesso! ${Number(parcelas) > 1 ? `${parcelas} parcelas lançadas.` : ''}`
         });
         setTimeout(() => setAlertMsg({ show: false, type: '', message: '' }), 5000);
       })
@@ -210,7 +229,7 @@ export default function Despesas() {
         setAlertMsg({
           show: true,
           type: 'danger',
-          message: 'Erro ao cadastrar despesa. Tente novamente.'
+          message: 'Erro ao salvar despesa. Tente novamente.'
         });
         setTimeout(() => setAlertMsg({ show: false, type: '', message: '' }), 5000);
       });
@@ -248,6 +267,72 @@ export default function Despesas() {
   }, [formData.mes, formData.ano, formData.parcelas])
 
   const isFormValid = formData.pessoaId && formData.tipoDespesaId && formData.loja.trim() && Number(formData.valor) > 0
+
+  const columns = useMemo(() => [
+    {
+      key: 'nomePessoa',
+      label: 'Pessoa',
+      sortable: true,
+      sortType: 'string',
+      render: (d) => <span className="fw-semibold">{d.nomePessoa}</span>
+    },
+    {
+      key: 'nomeTipoDespesa',
+      label: 'Tipo',
+      render: (d) => <Badge bg="secondary" style={{ fontWeight: 400 }}>{d.nomeTipoDespesa}</Badge>
+    },
+    { key: 'loja', label: 'Loja', sortable: true, sortType: 'string' },
+    {
+      key: 'valorParcela',
+      label: 'Valor Parcela',
+      align: 'right',
+      sortable: true,
+      sortType: 'number',
+      render: (d) => formatCurrency(d.parcelas?.[0]?.valor ?? 0)
+    },
+    {
+      key: 'parcelas',
+      label: 'Parcelas',
+      align: 'center',
+      render: (d) => {
+        const total = d.parcelas?.length ?? 0
+        if (total <= 1) return <Badge bg="success" text="white">À vista</Badge>
+        const pagas = contarParcelasPagas(d, refMesAnoFiltro)
+        return (
+          <Badge bg={pagas >= total ? 'success' : 'warning'} text={pagas >= total ? 'white' : 'dark'}>
+            {pagas}/{total}
+          </Badge>
+        )
+      }
+    },
+    { key: 'mesPrimeiraParcela', label: 'Mês' },
+    { key: 'anoPrimeiraParcela', label: 'Ano', sortable: true, sortType: 'number' },
+    {
+      key: 'observacao',
+      label: 'Observação',
+      render: (d) => (
+        <span className="text-muted" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+          {d.observacao || '—'}
+        </span>
+      )
+    },
+    {
+      key: 'acoes',
+      label: 'Ações',
+      align: 'center',
+      width: 110,
+      render: (d) => (
+        <>
+          <Button variant="outline-warning" size="sm" className="me-1" onClick={() => handleOpenEdit(d)} title="Editar">
+            <i className="bi bi-pencil"></i>
+          </Button>
+          <Button variant="outline-danger" size="sm" onClick={() => handleDeleteClick(d.id)} title="Excluir">
+            <i className="bi bi-trash"></i>
+          </Button>
+        </>
+      )
+    },
+  ], [refMesAnoFiltro])
 
   return (
     <Container fluid>
@@ -298,14 +383,14 @@ export default function Despesas() {
               <Form.Label className="fw-semibold">Tipo</Form.Label>
               <Form.Select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
                 <option value="">Todos os tipos</option>
-                {tiposUnicos.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+                {tiposDespesaApi.map(t => <option key={t.id} value={t.nome}>{t.nome}</option>)}
               </Form.Select>
             </Col>
             <Col xs={12} md={3}>
               <Form.Label className="fw-semibold">Mês</Form.Label>
               <Form.Select value={filtroMes} onChange={e => setFiltroMes(e.target.value)}>
                 <option value="">Todos os meses</option>
-                {mesesUnicos.map(m => <option key={m} value={m}>{m}</option>)}
+                {MESES.map(m => <option key={m.value} value={m.label}>{m.label}</option>)}
               </Form.Select>
             </Col>
             <Col xs={12} md={3}>
@@ -329,75 +414,22 @@ export default function Despesas() {
 
       {/* Tabela */}
       <Card className="shadow-sm">
-        <Card.Body className="p-0">
-          <Table responsive hover className="mb-0" style={{ fontSize: '0.9rem' }}>
-            <thead className="table-dark">
-              <tr>
-                <th>Pessoa</th>
-                <th>Tipo</th>
-                <th>Loja</th>
-                <th className="text-end">Valor Total</th>
-                <th className="text-end">Valor Parcela</th>
-                <th className="text-center">Parcelas</th>
-                <th>Mês</th>
-                <th>Ano</th>
-                <th>Observação</th>
-                <th style={{ width: 70 }} className="text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredDespesas.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="text-center text-muted py-5">
-                    <i className="bi bi-inbox d-block mb-2" style={{ fontSize: '2rem', opacity: 0.4 }}></i>
-                    Nenhuma despesa encontrada para os filtros selecionados.
-                  </td>
-                </tr>
-              ) : (
-                filteredDespesas.map(d => (
-                  <tr key={d.id}>
-                    <td className="fw-semibold">{d.nomePessoa}</td>
-                    <td>
-                      <Badge bg="secondary" style={{ fontWeight: 400 }}>{d.nomeTipoDespesa}</Badge>
-                    </td>
-                    <td>{d.loja}</td>
-                    <td className="text-danger fw-bold text-end">{formatCurrency(d.valorTotal)}</td>
-                    <td className="text-end">{formatCurrency(d.parcelas?.[0]?.valor ?? 0)}</td>
-                    <td className="text-center">
-                      {(() => {
-                        const total = d.parcelas?.length ?? 0
-                        if (total <= 1) return <Badge bg="success" text="white">À vista</Badge>
-                        const pagas = contarParcelasPagas(d, refMesAnoFiltro)
-                        return (
-                          <Badge bg={pagas >= total ? 'success' : 'warning'} text={pagas >= total ? 'white' : 'dark'}>
-                            {pagas}/{total}
-                          </Badge>
-                        )
-                      })()}
-                    </td>
-                    <td>{d.mesPrimeiraParcela}</td>
-                    <td>{d.anoPrimeiraParcela}</td>
-                    <td className="text-muted" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {d.observacao || '—'}
-                    </td>
-                    <td className="text-center">
-                      <Button variant="outline-danger" size="sm" onClick={() => handleDeleteClick(d.id)} title="Excluir">
-                        <i className="bi bi-trash"></i>
-                      </Button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </Table>
+        <Card.Body>
+          <TableComponent
+            columns={columns}
+            data={filteredDespesas}
+            itemsPerPage={15}
+            emptyMessage="Nenhuma despesa encontrada para os filtros selecionados."
+          />
         </Card.Body>
       </Card>
 
       {/* ── Modal Nova Despesa ──────────────────────────────────── */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" centered>
+      <Modal show={showModal} onHide={() => { setShowModal(false); setEditItem(null) }} size="lg" centered>
         <Modal.Header closeButton>
           <Modal.Title>
-            <i className="bi bi-credit-card me-2 text-danger"></i>Nova Despesa
+            <i className={`bi bi-${editItem ? 'pencil-square' : 'credit-card'} me-2 text-danger`}></i>
+            {editItem ? 'Editar Despesa' : 'Nova Despesa'}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -432,12 +464,11 @@ export default function Despesas() {
               <Col xs={12} md={6}>
                 <Form.Label>Valor Total (R$) <span className="text-danger">*</span></Form.Label>
                 <Form.Control
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={formData.valor}
-                  onChange={set('valor')}
-                  placeholder="0,00"
+                  type="text"
+                  value={formatValorDisplay(formData.valor)}
+                  onChange={handleValorChange}
+                  placeholder="R$ 0,00"
+                  inputMode="numeric"
                 />
               </Col>
 
@@ -503,10 +534,10 @@ export default function Despesas() {
           </Form>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowModal(false)}>Cancelar</Button>
+          <Button variant="secondary" onClick={() => { setShowModal(false); setEditItem(null) }}>Cancelar</Button>
           <Button variant="danger" onClick={handleSave} disabled={!isFormValid}>
             <i className="bi bi-check-lg me-1"></i>
-            {isParcelado ? `Lançar ${formData.parcelas} parcelas` : 'Salvar'}
+            {editItem ? 'Salvar alterações' : (isParcelado ? `Lançar ${formData.parcelas} parcelas` : 'Salvar')}
           </Button>
         </Modal.Footer>
       </Modal>

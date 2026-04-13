@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Container, Row, Col, Card, Form, Table, Badge } from 'react-bootstrap'
+import { Container, Row, Col, Card, Form, Badge } from 'react-bootstrap'
 import { MESES, ANOS, getMesLabel, formatCurrency } from '../utils/constants'
-
-const API_BASE = 'http://localhost:5107/api'
+import api from '../utils/api'
+import TableComponent from '../components/Table/Table'
 
 export default function Dashboard() {
   const [pessoas, setPessoas] = useState([])
@@ -15,14 +15,8 @@ export default function Dashboard() {
 
   // Buscar pessoas disponíveis
   useEffect(() => {
-    fetch(`${API_BASE}/Pessoa`)
-      .then(res => res.json())
-      .then(data => {
-        setPessoas(data)
-        if (data.length > 0) {
-          setFiltroPessoa(data[0].id)
-        }
-      })
+    api.get('/Pessoa')
+      .then(data => setPessoas(data))
       .catch(() => setPessoas([]))
   }, [])
 
@@ -31,8 +25,7 @@ export default function Dashboard() {
     if (!filtroPessoa || !filtroMes || !filtroAno) return
 
     setLoading(true)
-    fetch(`${API_BASE}/Dashboard/${filtroPessoa}/${filtroMes}/${filtroAno}`)
-      .then(res => res.json())
+    api.get(`/Dashboard/${filtroPessoa}/${filtroMes}/${filtroAno}`)
       .then(data => setDashboardData(data))
       .catch(() => setDashboardData(null))
       .finally(() => setLoading(false))
@@ -174,31 +167,19 @@ export default function Dashboard() {
             <Card.Header className="bg-white fw-semibold">
               <i className="bi bi-bar-chart me-2 text-primary"></i>Resumo Financeiro
             </Card.Header>
-            <Card.Body className="p-0">
-              <Table responsive hover className="mb-0">
-                <thead className="table-dark">
-                  <tr>
-                    <th>Pessoa</th>
-                    <th>Período</th>
-                    <th className="text-end">Receitas</th>
-                    <th className="text-end">Despesas</th>
-                    <th className="text-end">Saldo</th>
-                    <th className="text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="fw-semibold">{dashboardData.nomePessoa}</td>
-                    <td>{getMesLabel(dashboardData.mes)} / {dashboardData.ano}</td>
-                    <td className="text-success text-end">{formatCurrency(totalReceita)}</td>
-                    <td className="text-danger text-end">{formatCurrency(totalDespesa)}</td>
-                    <td className={`fw-bold text-end ${saldo >= 0 ? 'text-primary' : 'text-warning'}`}>
-                      {formatCurrency(saldo)}
-                    </td>
-                    <td className="text-center"><SaldoBadge value={saldo} /></td>
-                  </tr>
-                </tbody>
-              </Table>
+            <Card.Body>
+              <TableComponent
+                columns={[
+                  { key: 'nomePessoa', label: 'Pessoa', render: (r) => <span className="fw-semibold">{r.nomePessoa}</span> },
+                  { key: 'periodo', label: 'Período', render: (r) => `${getMesLabel(r.mes)} / ${r.ano}` },
+                  { key: 'totalReceitas', label: 'Receitas', align: 'right', render: (r) => <span className="text-success">{formatCurrency(r.totalReceitas)}</span> },
+                  { key: 'totalDespesas', label: 'Despesas', align: 'right', render: (r) => <span className="text-danger">{formatCurrency(r.totalDespesas)}</span> },
+                  { key: 'saldo', label: 'Saldo', align: 'right', render: (r) => <span className={`fw-bold ${r.saldo >= 0 ? 'text-primary' : 'text-warning'}`}>{formatCurrency(r.saldo)}</span> },
+                  { key: 'status', label: 'Status', align: 'center', render: (r) => <SaldoBadge value={r.saldo} /> },
+                ]}
+                data={[dashboardData]}
+                itemsPerPage={15}
+              />
             </Card.Body>
           </Card>
         </>
