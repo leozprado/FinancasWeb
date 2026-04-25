@@ -243,9 +243,26 @@ export default function Despesas() {
   }
 
   const handleDeleteConfirm = () => {
-    deleteDespesa(deleteId, deletarTodas)
-    setShowDelete(false)
-    setDeleteId(null)
+    api.delete(`/Despesas/excluir/${deleteId}`)
+      .then(() => {
+        setShowDelete(false)
+        setDeleteId(null)
+        fetchDespesas()
+        setAlertMsg({
+          show: true,
+          type: 'success',
+          message: 'Despesa excluída com sucesso!'
+        })
+        setTimeout(() => setAlertMsg({ show: false, type: '', message: '' }), 5000)
+      })
+      .catch(() => {
+        setAlertMsg({
+          show: true,
+          type: 'danger',
+          message: 'Erro ao excluir despesa. Tente novamente.'
+        })
+        setTimeout(() => setAlertMsg({ show: false, type: '', message: '' }), 5000)
+      })
   }
 
   const despesaParaDeletar = deleteId ? despesas.find(d => d.id === deleteId) : null
@@ -560,8 +577,8 @@ export default function Despesas() {
                 type="checkbox"
                 id="deletarTodas"
                 label={`Excluir todas as ${despesaParaDeletar.parcelas.length} parcelas desta compra`}
-                checked={deletarTodas}
-                onChange={e => setDeletarTodas(e.target.checked)}
+                checked
+                disabled
               />
             </>
           )}
