@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Container, Card, Button, Modal, Form, Row, Col, Badge, Alert } from 'react-bootstrap'
+import { Container, Card, Button, Modal, Form, Row, Col, Badge, Alert, Dropdown } from 'react-bootstrap'
 import TableComponent from '../components/Table/Table'
 import { useData } from '../context/DataContext'
 import { MESES, ANOS, getMesLabel, formatCurrency } from '../utils/constants'
@@ -76,7 +76,7 @@ export default function Despesas() {
   }, [])
 
   const [filtroPessoa, setFiltroPessoa] = useState('')
-  const [filtroTipo,   setFiltroTipo]   = useState('')
+  const [filtroTipo,   setFiltroTipo]   = useState([])
   const [filtroMes,    setFiltroMes]    = useState(MESES[new Date().getMonth()].label)
   const [filtroAno,    setFiltroAno]    = useState(String(new Date().getFullYear()))
 
@@ -98,7 +98,7 @@ export default function Despesas() {
     despesas
       .filter(d => {
         if (filtroPessoa && d.nomePessoa          !== filtroPessoa)     return false
-        if (filtroTipo   && d.nomeTipoDespesa     !== filtroTipo)       return false
+        if (filtroTipo.length && !filtroTipo.includes(d.nomeTipoDespesa)) return false
         if (filtroMes || filtroAno) {
           const temParcela = getTodasParcelas(d).some(p =>
             (!filtroMes || p.mesLabel === filtroMes) &&
@@ -131,7 +131,7 @@ export default function Despesas() {
   // ── Limpar filtros ─────────────────────────────────────────────
   const limparFiltros = () => {
     setFiltroPessoa('')
-    setFiltroTipo('')
+    setFiltroTipo([])
     setFiltroMes('')
     setFiltroAno('')
   }
@@ -398,10 +398,49 @@ export default function Despesas() {
             </Col>
             <Col xs={12} md={3}>
               <Form.Label className="fw-semibold">Tipo</Form.Label>
-              <Form.Select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
-                <option value="">Todos os tipos</option>
-                {tiposDespesaApi.map(t => <option key={t.id} value={t.nome}>{t.nome}</option>)}
-              </Form.Select>
+              <Dropdown autoClose="outside">
+                <Dropdown.Toggle
+                  variant="outline-secondary"
+                  className="w-100 text-start d-flex justify-content-between align-items-center"
+                  style={{ backgroundColor: '#fff', fontWeight: 400 }}
+                >
+                  {filtroTipo.length === 0
+                    ? 'Todos os tipos'
+                    : filtroTipo.length === 1
+                      ? filtroTipo[0]
+                      : `${filtroTipo.length} tipos selecionados`}
+                </Dropdown.Toggle>
+                <Dropdown.Menu style={{ width: '100%', maxHeight: 250, overflowY: 'auto' }}>
+                  <Dropdown.Item
+                    as="button"
+                    onClick={() => setFiltroTipo([])}
+                    active={filtroTipo.length === 0}
+                  >
+                    Todos os tipos
+                  </Dropdown.Item>
+                  <Dropdown.Divider />
+                  {tiposDespesaApi.map(t => (
+                    <Dropdown.Item
+                      key={t.id}
+                      as="button"
+                      onClick={() =>
+                        setFiltroTipo(prev =>
+                          prev.includes(t.nome)
+                            ? prev.filter(x => x !== t.nome)
+                            : [...prev, t.nome]
+                        )
+                      }
+                    >
+                      <Form.Check
+                        type="checkbox"
+                        label={t.nome}
+                        checked={filtroTipo.includes(t.nome)}
+                        readOnly
+                      />
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown>
             </Col>
             <Col xs={12} md={3}>
               <Form.Label className="fw-semibold">Mês</Form.Label>
