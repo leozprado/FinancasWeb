@@ -7,6 +7,7 @@ const menuItems = [
   { path: '/tipos-despesa', label: 'Tipos de Despesa',    icon: 'bi-tags-fill' },
   { path: '/salarios',      label: 'Receitas / Salários', icon: 'bi-cash-coin' },
   { path: '/despesas',      label: 'Despesas',            icon: 'bi-credit-card-fill' },
+  { path: '/lembretes',     label: 'Lembretes',           icon: 'bi-bell-fill' },
 ]
 
 export default function Sidebar({ collapsed, onToggle }) {

@@ -7,6 +7,7 @@ import Pessoas from '../pages/Pessoas'
 import TiposDespesa from '../pages/TiposDespesa'
 import Salarios from '../pages/Salarios'
 import Despesas from '../pages/Despesas'
+import Lembretes from '../pages/Lembretes'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -43,6 +44,7 @@ export default function AppRouter() {
         <Route path="tipos-despesa" element={<TiposDespesa />} />
         <Route path="salarios"      element={<Salarios />} />
         <Route path="despesas"      element={<Despesas />} />
+        <Route path="lembretes"     element={<Lembretes />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
