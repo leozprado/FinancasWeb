@@ -53,11 +53,33 @@ api.interceptors.response.use(
       return Promise.reject(new Error('Erro de conexão. Verifique sua internet.'))
     }
 
-    // Outros erros
-    const errorMessage = error.response.data?.message || 
-                         error.response.data?.error || 
-                         `Erro na requisição: ${error.response.status}`
-    
+    // Outros erros - extrai a melhor mensagem disponível do backend.
+    // O backend pode responder em formatos diferentes:
+    //   - Regra de negócio:        { "mensagem": "Email ou senha inválidos." }
+    //   - Validação (ProblemDetails): { "title": "...", "errors": { "campo": ["msg"] } }
+    const data = error.response.data
+    let errorMessage
+
+    if (typeof data === 'string' && data.trim()) {
+      errorMessage = data
+    } else if (data?.mensagem) {
+      errorMessage = data.mensagem
+    } else if (data?.message) {
+      errorMessage = data.message
+    } else if (data?.error) {
+      errorMessage = data.error
+    } else if (data?.errors && typeof data.errors === 'object') {
+      // ASP.NET ProblemDetails: junta todas as mensagens de validação
+      const mensagens = Object.values(data.errors).flat().filter(Boolean)
+      errorMessage = mensagens.length
+        ? mensagens.join(' ')
+        : (data.title || `Erro na requisição: ${error.response.status}`)
+    } else if (data?.title) {
+      errorMessage = data.title
+    } else {
+      errorMessage = `Erro na requisição: ${error.response.status}`
+    }
+
     console.error('Erro na API:', errorMessage)
     return Promise.reject(new Error(errorMessage))
   }
